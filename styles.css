@@ -1,0 +1,13 @@
+.lifehq-updater-modal { width: min(820px, 92vw); }
+.lifehq-updater .lifehq-bulk { display: flex; gap: 8px; margin: 0.5em 0 1em; }
+.lifehq-updater .lifehq-section { border-top: 1px solid var(--background-modifier-border); padding-top: 0.6em; margin-top: 0.6em; }
+.lifehq-updater .lifehq-group { display: flex; align-items: center; gap: 4px; margin: 0.6em 0 0.3em; }
+.lifehq-updater .lifehq-list { list-style: none; padding-left: 1.4em; margin: 0.2em 0; }
+.lifehq-updater .lifehq-list li { margin: 0.25em 0; }
+.lifehq-updater .lifehq-item { cursor: pointer; font-size: var(--font-ui-small); word-break: break-word; display: flex; gap: 6px; align-items: flex-start; }
+.lifehq-updater .lifehq-item input { margin-top: 2px; flex: none; }
+.lifehq-updater .lifehq-why { padding-left: 26px; }
+.lifehq-updater .mod-warning { color: var(--text-error); }
+.lifehq-updater .lifehq-input { width: 100%; margin: 0.5em 0; }
+.lifehq-updater .lifehq-code { font-family: var(--font-monospace); font-size: 1.4em; letter-spacing: 3px; text-transform: uppercase; }
+.lifehq-updater .lifehq-from { margin: 0 0 0.6em; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }

@@ -1,0 +1,10 @@
+{
+  "id": "lifehq-updater",
+  "name": "LifeHQ Updater",
+  "version": "0.1.0",
+  "minAppVersion": "1.5.0",
+  "description": "Update LifeHQ to a new release without overwriting your customizations.",
+  "author": "Mike Schmitz",
+  "authorUrl": "https://lifehq.practicalpkm.com",
+  "isDesktopOnly": false
+}
