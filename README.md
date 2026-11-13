@@ -9,7 +9,7 @@ When a new version of LifeHQ comes out, the updater shows you a checklist of eve
 - Moved or renamed LifeHQ files are found where you put them.
 - Settings are updated one at a time, so you keep your own tweaks.
 
-Updates are included with LifeHQ, Library Pro, Library VIP and Library Lifetime.
+Updates are included with a LifeHQ purchase or a Library Pro membership.
 
 ## Install (one time)
 
@@ -22,7 +22,7 @@ LifeHQ already includes the BRAT plugin, which installs plugins like this one.
 ## Update LifeHQ
 
 1. Run **Check for LifeHQ updates** from the command palette.
-2. The first time, enter the email you bought LifeHQ with. Type in the code we email you.
+2. The first time, enter the email you used to buy LifeHQ or join Library Pro. Type in the code we email you.
 3. Review the checklist, then click **Back up & update**.
 
 After Obsidian reloads, your update report opens. It shows exactly what changed and why. A backup of every changed file is saved in `LifeHQ Updates/`.

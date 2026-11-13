@@ -362,7 +362,7 @@ class SignInModal extends Modal {
     const { contentEl } = this;
     contentEl.addClass("lifehq-updater");
     contentEl.createEl("h2", { text: "Turn on LifeHQ updates" });
-    contentEl.createEl("p", { text: "Updates come with LifeHQ, Library Pro, Library VIP, and Library Lifetime. Enter the email you bought with and we'll send you a code." });
+    contentEl.createEl("p", { text: "Updates are included with a LifeHQ purchase or a Library Pro membership. Enter the email you used to buy LifeHQ or join Library Pro, and we'll send you a code." });
     const email = contentEl.createEl("input", { type: "email", attr: { placeholder: "you@example.com" }, cls: "lifehq-input" });
     email.value = this.plugin.data.email ?? "";
     const status = contentEl.createEl("p", { cls: "setting-item-description" });

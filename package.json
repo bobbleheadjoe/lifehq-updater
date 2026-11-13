@@ -1,6 +1,6 @@
 {
   "name": "lifehq-updater",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Update a LifeHQ vault to a new release without overwriting your customizations.",
   "main": "main.js",
   "scripts": {
