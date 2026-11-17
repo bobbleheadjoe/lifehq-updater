@@ -1,11 +1,25 @@
-import { App, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile, normalizePath, requestUrl } from "obsidian";
+import { App, Modal, Notice, Platform, Plugin, PluginSettingTab, Setting, TFile, normalizePath, requestUrl, requireApiVersion } from "obsidian";
 import { unzipSync, zipSync } from "fflate";
 import { Action, ActionKind, History, Plan, SELF_ID, SettingChange, VaultReader, applySettingSelection, bytes, deepEq, planUpdate, sha256, text } from "./engine";
 
 const API = "https://lifehq-updates.vercel.app/api";
 
-interface Data { installedVersion: string | null; pendingReport: string | null; token: string | null; email: string | null; lastCheck: number; }
-const DEFAULTS: Data = { installedVersion: null, pendingReport: null, token: null, email: null, lastCheck: 0 };
+interface Data {
+  installedVersion: string | null; pendingReport: string | null; token: string | null; email: string | null; lastCheck: number;
+  /** Plugins that must be switched on after the reload that finishes an update (checked, then cleared). */
+  pendingEnable?: string[] | null;
+}
+const DEFAULTS: Data = { installedVersion: null, pendingReport: null, token: null, email: null, lastCheck: 0, pendingEnable: null };
+
+/** The parts of Obsidian's (undocumented) plugin manager the updater uses. */
+interface PluginManager {
+  enabledPlugins: Set<string>;
+  plugins: Record<string, unknown>;
+  manifests: Record<string, { name?: string; minAppVersion?: string; isDesktopOnly?: boolean }>;
+  enablePluginAndSave(id: string): Promise<boolean>;
+}
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const asIds = (v: unknown): string[] => Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
 
 /** What the customer picked: checklist id -> checked. Missing ids use the recommendation. */
 export type Selection = Map<string, boolean>;
@@ -42,6 +56,7 @@ export default class LifeHQUpdater extends Plugin {
       // Once a day, quietly check for a new release (only when signed in).
       if (this.data.token && Date.now() - this.data.lastCheck > 24 * 3600 * 1000) this.checkForUpdates(false);
       const report = this.data.pendingReport;
+      await this.restorePlugins(report);
       if (!report) return;
       this.data.pendingReport = null;
       await this.saveData(this.data);
@@ -201,6 +216,51 @@ export default class LifeHQUpdater extends Plugin {
     return out;
   }
 
+  /**
+   * First start after an update: switch back on every plugin the update meant to leave on, whatever turned it off
+   * (Obsidian rewriting its list before the reload, a plugin that failed to start, ...). Adds what it did to the report.
+   */
+  async restorePlugins(report: string | null): Promise<void> {
+    const want = this.data.pendingEnable;
+    if (!want?.length) return;
+    this.data.pendingEnable = null;
+    await this.saveData(this.data);
+    const pm = (this.app as unknown as { plugins?: PluginManager }).plugins;
+    if (!pm) return;
+    // Let Obsidian finish starting the plugins it already has switched on.
+    const loading = () => want.filter((id) => pm.enabledPlugins.has(id) && pm.manifests[id] && !pm.plugins[id]);
+    for (let i = 0; i < 30 && loading().length; i++) await sleep(500);
+
+    const turnedOn: string[] = [];
+    const failed: string[] = [];
+    for (const id of want) {
+      const m = pm.manifests[id];
+      if (!m) continue; // not installed: nothing to switch on
+      if (pm.enabledPlugins.has(id) && pm.plugins[id]) continue;
+      const name = m.name ?? id;
+      if (!pm.enabledPlugins.has(id)) {
+        try { await pm.enablePluginAndSave(id); } catch (e) { console.error(`LifeHQ Updater: couldn't turn on ${id}`, e); }
+      }
+      // On only counts when Obsidian has it switched on AND running: a plugin that crashes while starting can
+      // stay in Obsidian's list of loaded plugins without being switched on.
+      if (pm.enabledPlugins.has(id) && pm.plugins[id]) { turnedOn.push(name); continue; }
+      const why = m.isDesktopOnly && Platform.isMobile ? " (it only works on desktop)"
+        : m.minAppVersion && !requireApiVersion(m.minAppVersion) ? ` (it needs Obsidian ${m.minAppVersion} or newer)` : "";
+      failed.push(name + why);
+    }
+    if (!turnedOn.length && !failed.length) return;
+
+    const lines: string[] = [];
+    if (turnedOn.length) lines.push("## Plugins switched back on", "", "These plugins were off after the update, so the updater turned them back on:", "", ...turnedOn.map((n) => `- ${n}`), "");
+    if (failed.length) lines.push("## Plugins that couldn't start", "", "These plugins are installed, but Obsidian couldn't start them. Update Obsidian (Settings → About → Check for updates), then switch them on under Settings → Community plugins. If one still won't start, email support@mikeschmitz.com:", "", ...failed.map((n) => `- ${n}`), "");
+    if (report && (await this.app.vault.adapter.exists(report))) {
+      const old = await this.app.vault.adapter.read(report);
+      await this.app.vault.adapter.write(report, old.trimEnd() + "\n\n" + lines.join("\n"));
+    }
+    if (failed.length) new Notice(`LifeHQ Updater: ${failed.length} plugin${failed.length === 1 ? "" : "s"} couldn't start. See the update report.`, 10000);
+    else new Notice(`LifeHQ Updater: switched ${turnedOn.length} plugin${turnedOn.length === 1 ? "" : "s"} back on.`);
+  }
+
   /** Apply the customer's checklist. Records what happened on each action/setting for the report. */
   async applyPlan(plan: Plan, selection: Selection = new Map()): Promise<string> {
     const dir = `LifeHQ Updates/LifeHQ ${plan.to}`;
@@ -256,15 +316,23 @@ export default class LifeHQUpdater extends Plugin {
     }
     await this.write(`${dir}/Backup before update.zip`, zipSync(backup, { level: 6 }));
 
-    // A reinstalled plugin must also be switched back on.
+    // Every plugin that's on now stays on (a tester found plugins switched off after an update). The list
+    // Obsidian loads after the reload = what's on now (its saved list plus what it's running), plus LifeHQ's
+    // list changes and reinstalled plugins, minus only plugins a LifeHQ change the customer kept checked turns off.
+    // It's also remembered, so the first start after the update can switch back on anything that still ended up off.
+    const cp = ".obsidian/community-plugins.json";
+    const saved = asIds(JSON.parse((await a.exists(this.vp(cp))) ? await a.read(this.vp(cp)) : "[]"));
+    const running = [...((this.app as unknown as { plugins?: PluginManager }).plugins?.enabledPlugins ?? [])];
+    const onNow = [...new Set([...saved, ...running])];
+    const pending = writes.find((w) => w[0] === cp);
+    const planned = pending ? asIds(JSON.parse(text(pending[1]))) : null;
+    const turnedOffByLifeHQ = new Set(planned ? saved.filter((id) => !planned.includes(id)) : []);
     const reinstall = plan.actions.filter((x) => x.kind === "plugin-removed" && x.selected).map((x) => x.path.split("/")[2]);
-    if (reinstall.length) {
-      const cp = ".obsidian/community-plugins.json";
-      const pending = writes.find((w) => w[0] === cp);
-      const current = pending ? JSON.parse(text(pending[1])) : JSON.parse((await a.exists(this.vp(cp))) ? await a.read(this.vp(cp)) : "[]");
-      const next = [...current, ...reinstall.filter((id) => !current.includes(id))];
-      if (pending) pending[1] = bytes(JSON.stringify(next, null, 2)); else writes.push([cp, bytes(JSON.stringify(next, null, 2))]);
-    }
+    const mustBeOn = [...new Set([...(planned ?? onNow), ...onNow.filter((id) => !turnedOffByLifeHQ.has(id)), ...reinstall])];
+    const listBytes = bytes(JSON.stringify(mustBeOn, null, 2));
+    if (pending) pending[1] = listBytes;
+    else if (!deepEq(mustBeOn, saved)) writes.push([cp, listBytes]);
+    this.data.pendingEnable = mustBeOn.filter((id) => id !== this.manifest.id);
 
     // 3. Apply: moves first (so renamed files land before new content is written), then writes.
     for (const [from, to] of moves) await this.move(from, to);
