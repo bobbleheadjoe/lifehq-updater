@@ -486,6 +486,40 @@ class UpdaterSettingTab extends PluginSettingTab {
         if (d.email) { await this.plugin.signOut(); this.display(); }
         else new SignInModal(this.app, this.plugin, () => this.display()).open();
       }));
+    // Where the backups go (a tester asked for this to be shown here, not just on the web page).
+    const backups = new Setting(containerEl).setName("Backups").setDesc(createFragment((f) => {
+      f.appendText("Before an update changes anything, the files it's about to change are saved to ");
+      f.createEl("code", { text: "LifeHQ Updates/LifeHQ <version>/Backup before update.zip" });
+      f.appendText(" at the top level of your vault, next to that update's report. Unzip it to get a file back.");
+    }));
+    void this.latestBackup().then((path) => {
+      if (!path || !backups.descEl.isConnected) return;
+      backups.descEl.createDiv({ cls: "lifehq-updater-backup-path", text: `Latest backup: ${path}` });
+      backups.addButton((b) => b.setButtonText("Show in vault").onClick(() => this.reveal(path)));
+    });
+  }
+
+  /** The newest "Backup before update.zip" under LifeHQ Updates/, or null if there isn't one. */
+  async latestBackup(): Promise<string | null> {
+    const a = this.app.vault.adapter, root = "LifeHQ Updates";
+    if (!(await a.exists(root))) return null;
+    let best: { path: string; time: number } | null = null;
+    for (const dir of (await a.list(root)).folders) {
+      const path = normalizePath(`${dir}/Backup before update.zip`);
+      if (!(await a.exists(path))) continue;
+      const time = (await a.stat(path))?.mtime ?? 0;
+      if (!best || time > best.time) best = { path, time };
+    }
+    return best?.path ?? null;
+  }
+
+  /** Show the backup's folder in the file explorer (zips can be hidden there, so reveal the folder). */
+  reveal(path: string) {
+    const folder = this.app.vault.getAbstractFileByPath(path.slice(0, path.lastIndexOf("/")));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const explorer = (this.app as any).internalPlugins?.getEnabledPluginById?.("file-explorer");
+    if (folder && explorer?.revealInFolder) { explorer.revealInFolder(folder); return; }
+    new Notice(`Your latest backup is at ${path}`, 8000);
   }
 }
 

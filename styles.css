@@ -11,3 +11,6 @@
 .lifehq-updater .lifehq-input { width: 100%; margin: 0.5em 0; }
 .lifehq-updater .lifehq-code { font-family: var(--font-monospace); font-size: 1.4em; letter-spacing: 3px; text-transform: uppercase; }
 .lifehq-updater .lifehq-from { margin: 0 0 0.6em; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+/* Settings tab: path of the newest backup under the Backups description */
+.lifehq-updater-backup-path { margin-top: 6px; font-family: var(--font-monospace); font-size: var(--font-ui-smaller); color: var(--text-muted); word-break: break-all; }
